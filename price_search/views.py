@@ -4,26 +4,27 @@ from rest_framework.response import Response
 from webscraper.property_scraper import PropertyScraper
 import utils.utils as utils
 import asyncio
+import json
 
 
-async def async_property_scrape(price):
-    return await PropertyScraper().price_search(price=price,)
+async def async_property_scrape(post_data):
+    return await PropertyScraper().price_search(post_data)
 
 
-
-
-@api_view(['GET'])
+@api_view(['GET', 'POST'])
 def search(request):
-    query = request.GET.get('query')
-    price = int(query)
-    results_df = asyncio.run(async_property_scrape(price))
-    top_vals_df = utils.get_top_cats(results_df) # top values for each col per city.
-    props_json = results_df.to_json(orient='records')
-    top_vals_json = top_vals_df.to_json(orient='records')
-    response_json = {
-        'properties': props_json,
-        'summary_table': top_vals_json,
-    }
-    
+    post_data = request.data
+    if post_data:
+        results_df = asyncio.run(async_property_scrape(post_data))
+        summary_df = utils.get_summary_table(results_df, post_data['searchType']) 
+        props_json = results_df.to_dict(orient='records')
+        summary_json = summary_df.to_dict(orient='records')
+        response_json = {
+            'properties': props_json,
+            'summaryTable': summary_json,
+        }
+ 
+
     return Response(response_json)
+    # return Response({'a':[{'a':'s'}, {'b':6}]})
 
