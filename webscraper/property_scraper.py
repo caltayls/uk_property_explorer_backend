@@ -74,13 +74,13 @@ class PropertyScraper:
             'radius': f'&radius=3',
             'numOfProps': '&numberOfPropertiesPerPage=100',
             'sortType': '&sortType=6',
-            'mustHave': f'mustHave={"".join(f"{key}%2C" for key, value in post_data["mustHave"].items() if value)}'.strip('%2C'),
+            'mustHave': f'&mustHave={"".join(f"{key}%2C" for key, value in post_data["mustHave"].items() if value)}'.strip('%2C'),
         }
 
         if post_data['searchType'] == 'price':
             search_filters['price'] = f'&maxPrice={post_data["price"]+5000}&minPrice={post_data["price"]-5000}'
             return search_filters
-        search_filters['propertyType'] = f'propertyTypes={post_data["propertyType"].lower()}'
+        search_filters['propertyType'] = f'&propertyTypes={post_data["propertyType"].lower()}'
         search_filters['numOfBedrooms'] = f'&maxBedrooms={post_data["numOfBedrooms"]}&minBedrooms={post_data["numOfBedrooms"]}'
         return search_filters
 
@@ -96,7 +96,7 @@ class PropertyScraper:
             task = asyncio.create_task(self.scrape(city, url, pc_sem))
             tasks.append(task) 
         await asyncio.gather(*tasks)
-        return self._df
+        return self._df.reset_index(drop=True)
 
   
     async def start_scrape(self, postcode, pc_sem, headless=False,):
@@ -182,27 +182,14 @@ class PropertyScraper:
     
 if __name__ == '__main__':
 
-
-    post_data ={
-        'searchType': 'features', 
-        'mustHave': {'garden': False, 'newHome': False, 'parking': False, 'retirementHome': False},
-        'numOfBedrooms': '3', 
+    post_data = {
+        'searchType': 'features',
+        'mustHave': {'garden': True, 'newHome': False, 'parking': False, 'retirementHome': False},
+        'numOfBedrooms': '2', 
         'propertyType': 'Terraced'
-    }
+        }
+    df = PropertyScraper.run_price_search(post_data)
+    df = df.reset_index(drop=True)
     
-    # df = PropertyScraper.run_price_search(post_data)
-    # df
-    # filters = PropertyScraper().get_search_filters(post_data)
-    print(f'{"".join(filter for filter in filters.values())}')
-
-    # a df of top categories for each city
-    # columns = ['city', 'bedrooms', 'bathrooms', 'propertySubType', 'listingUpdate']
-    # df_short = df[columns].reset_index(drop=True)
-    # df_short[['bedrooms', 'bathrooms']] = df_short[['bedrooms', 'bathrooms']].astype('category') 
-    # listing_update_expanded = pd.DataFrame(df_short.listingUpdate.to_list())
-    # df_expanded = pd.concat([df_short.drop('listingUpdate', axis=1), listing_update_expanded['listingUpdateReason']], axis=1)
-    # df_summary = df_expanded.groupby('city').describe(include='all')
-    # df_summary_top_vals = df_summary.xs('top', level=1, axis=1).reset_index()
-    # df_summary_top_vals.to_json('top_vals.json', index=True, orient='records', )
-    
-    # df_summary_top_vals
+    df_dict = df.to_dict(orient='records')
+    df_dict[0]    
