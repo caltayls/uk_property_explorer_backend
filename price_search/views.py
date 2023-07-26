@@ -1,7 +1,8 @@
 from django.shortcuts import render
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from webscraper.property_scraper import PropertyScraper
+from price_search.webscraper.property_scraper import PropertyScraper
+from price_search.models import RightmoveLocationCodes
 import utils.utils as utils
 import asyncio
 import json
