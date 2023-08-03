@@ -13,6 +13,17 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 
 
+
+import os
+import django
+from django.conf import settings
+
+# Set up Django environment
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'rightmove_app.settings')
+django.setup()
+from price_search.models import RightmoveLocationCodes
+
+
 region_codes = {
     'London': r'locationIdentifier=REGION%5E87490',
     'Manchester': r'locationIdentifier=REGION%5E904',
@@ -34,7 +45,7 @@ class PropertyScraper:
         self.scrape_type = None
         self.postcode_list = None
         self.for_sale = for_sale
-        self.region_codes = None
+        self.location_codes = None
         self.prop_array = []
         self._df = pd.DataFrame()
 
@@ -52,27 +63,29 @@ class PropertyScraper:
     def get_search_filters(self, post_data): 
         search_filters = {
             'dontShow': '&dontShow=retirement%2CsharedOwnership',
-            'radius': f'&radius=3',
             'numOfProps': '&numberOfPropertiesPerPage=100',
             'sortType': '&sortType=6',
             'mustHave': f'&mustHave={"".join(f"{key}%2C" for key, value in post_data["mustHave"].items() if value)}'.strip('%2C'),
         }
 
         if post_data['searchType'] == 'price':
-            search_filters['price'] = f'&maxPrice={post_data["price"]+5000}&minPrice={post_data["price"]-5000}'
+            price = int(post_data["price"])
+            search_filters['price'] = f'&maxPrice={price+5000}&minPrice={price-5000}'
             return search_filters
         search_filters['propertyType'] = f'&propertyTypes={post_data["propertyType"].lower()}'
         search_filters['numOfBedrooms'] = f'&maxBedrooms={post_data["numOfBedrooms"]}&minBedrooms={post_data["numOfBedrooms"]}'
         return search_filters
 
-    async def search(self, post_data, search_radius: int=3, region_codes: dict=region_codes):
+    async def search(self, post_data, location_codes):
         """A method to explore what a specific budget is able to buy across England."""
-        self.region_codes = region_codes
+        self.location_codes = location_codes
         search_filters = self.get_search_filters(post_data)
         tasks = []
         pc_sem = asyncio.Semaphore(2)
-        for city, region_code in self.region_codes.items():
-            url = rf"https://www.rightmove.co.uk/property-for-sale/find.html?{region_code}{''.join(filter for filter in search_filters.values())}"
+        for city, location_code in self.location_codes.items():
+            location_code = f'locationIdentifier={location_code}'
+            url = rf"https://www.rightmove.co.uk/property-for-sale/find.html?{location_code}{''.join(filter for filter in search_filters.values())}"
+            url = url + f"&radius=0"
             task = asyncio.create_task(self.scrape(city, url))
             tasks.append(task) 
         await asyncio.gather(*tasks)
@@ -133,26 +146,40 @@ class PropertyScraper:
         await asyncio.sleep(2)
     
     @staticmethod
-    def run_search(post_data, radius=3,):
+    def run_search(post_data, region_code_dict):
         loop = asyncio.get_event_loop()
-        return  loop.run_until_complete(PropertyScraper().search(post_data=post_data, search_radius=radius))
+        return  loop.run_until_complete(PropertyScraper().search(post_data=post_data, region_codes=region_code_dict))
 
 
  
 
-            
+def get_region_code_dict(post_data):
+    if post_data['whatToSearch'] == 'Major towns and cities within a region':
+        with open('data/regions-major-towns-cities.json', 'r') as f:
+            regions_towns = json.load(f)
+        region = post_data['region']
+        town_array = regions_towns[region]
+        records = RightmoveLocationCodes.objects.filter(location__in=town_array, subDivType='TOWN/CITY')
+    elif post_data['whatToSearch'] == 'London Boroughs':
+        with open('data/region_lad_relationships.json', 'r') as f:
+            regions_lads = json.load(f)
+        borough_array = regions_lads['London']
+        records = RightmoveLocationCodes.objects.filter(location__in=borough_array, subDivType='LAD')
+    
+    region_dict = {record.location: record.locationIdentifier for record in records}
+    return region_dict         
 
     
 if __name__ == '__main__':
 
+    get_region_code_dict('North West')
+    # post_data = {
+    #     'mustHave': {'garden': True, 'newHome': False, 'parking': False, 'retirementHome': False},
+    #     'numOfBedrooms': 2,
+    #     'propertyType': "Semi-detached",
+    #     'searchType': "features"
+    # }
 
-    post_data = {
-        'mustHave': {'garden': True, 'newHome': False, 'parking': False, 'retirementHome': False},
-        'numOfBedrooms': 2,
-        'propertyType': "Semi-detached",
-        'searchType': "features"
-    }
+    # search = PropertyScraper.run_search(post_data)
 
-    search = PropertyScraper.run_search(post_data)
-
-    search
+    # search
